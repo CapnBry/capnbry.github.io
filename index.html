@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>capnbry // projects</title>
+<meta name="description" content="Browser-based hardware tools by capnbry: Widscan58, a 5.8 GHz FPV scanner on the ESP32-C5, and FNB48 Web Control, a Web Bluetooth frontend for the FNIRSI FNB48 USB meter.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #05070d;
+    --panel: rgba(14, 9, 28, 0.9);
+    --line: rgba(139, 92, 246, 0.16);
+    --text: #d8e4f5;
+    --dim: #7d8aa3;
+    --purple: #6d28d9;
+    --purple-hi: #a78bfa;
+    --gold: #f5c542;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    --sans: "Space Grotesk", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.55;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  a { color: inherit; }
+
+  /* Background layers: animated spectrum canvas, grid, scanlines */
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -3; }
+  .grid {
+    position: fixed; inset: 0; z-index: -2; pointer-events: none;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at 50% 30%, #000 20%, transparent 75%);
+  }
+  .scan {
+    position: fixed; inset: 0; z-index: 10; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 3px);
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+
+  /* Header */
+  header { padding: 72px 0 40px; }
+  .prompt {
+    font-family: var(--mono); font-size: 14px; color: var(--gold);
+    letter-spacing: 0.04em;
+  }
+  .prompt .cursor {
+    display: inline-block; width: 0.6em; height: 1.1em; vertical-align: -0.2em;
+    background: var(--gold); margin-left: 2px; animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  h1 {
+    font-family: var(--mono); font-weight: 800;
+    font-size: clamp(44px, 9vw, 104px);
+    line-height: 0.95; margin: 18px 0 14px; letter-spacing: -0.04em;
+    position: relative; display: inline-block;
+    background: linear-gradient(92deg, #b8860b, #c084fc 55%, var(--purple));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 24px rgba(124,58,237,0.35));
+  }
+  h1::before, h1::after {
+    content: attr(data-text); position: absolute; inset: 0;
+    background: inherit; -webkit-background-clip: text; background-clip: text;
+    opacity: 0.8; pointer-events: none;
+  }
+  h1::before { animation: glitch-a 4.2s infinite; color: transparent; }
+  h1::after  { animation: glitch-b 4.2s infinite; color: transparent; }
+  @keyframes glitch-a {
+    0%, 92%, 100% { transform: none; clip-path: inset(0 0 100% 0); }
+    93% { transform: translate(-4px, 1px); clip-path: inset(10% 0 55% 0); }
+    95% { transform: translate(3px, -1px); clip-path: inset(60% 0 8% 0); }
+  }
+  @keyframes glitch-b {
+    0%, 93%, 100% { transform: none; clip-path: inset(0 0 100% 0); }
+    94% { transform: translate(4px, 0); clip-path: inset(35% 0 40% 0); }
+    96% { transform: translate(-3px, 1px); clip-path: inset(78% 0 2% 0); }
+  }
+
+  .tagline { font-size: clamp(17px, 2.2vw, 21px); color: var(--dim); max-width: 680px; margin: 0; }
+  .tagline b { color: var(--text); font-weight: 500; }
+
+  .status {
+    display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 28px;
+    font-family: var(--mono); font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.12em;
+  }
+  .status span::before {
+    content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--gold); box-shadow: 0 0 10px var(--gold); margin-right: 8px; vertical-align: 1px;
+  }
+  .status span:nth-child(n+2)::before { background: var(--purple-hi); box-shadow: 0 0 10px var(--purple); }
+
+  /* Project cards */
+  .projects { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); gap: 28px; padding-bottom: 72px; }
+
+  .card {
+    --accent: var(--purple);
+    position: relative; border-radius: 18px; padding: 1px;
+    background: linear-gradient(140deg, var(--accent), transparent 35%, transparent 65%, var(--accent));
+  }
+  .card-inner {
+    position: relative; height: 100%; border-radius: 17px; overflow: hidden;
+    background: var(--panel);
+    display: flex; flex-direction: column;
+  }
+  /* Corner brackets */
+  .card-inner::before, .card-inner::after {
+    content: ""; position: absolute; width: 18px; height: 18px; border: 2px solid var(--accent); z-index: 2; pointer-events: none;
+  }
+  .card-inner::before { top: 12px; left: 12px; border-right: 0; border-bottom: 0; }
+  .card-inner::after  { bottom: 12px; right: 12px; border-left: 0; border-top: 0; }
+
+  .viz { height: 150px; width: 100%; display: block; border-bottom: 1px solid var(--line); background: rgba(0,0,0,0.35); }
+
+  .body { padding: 26px 28px 28px; display: flex; flex-direction: column; flex: 1; }
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--purple-hi); }
+  h2 { font-family: var(--mono); font-size: clamp(26px, 3.4vw, 34px); margin: 6px 0 10px; letter-spacing: -0.02em; }
+  .lede { font-size: 17px; margin: 0 0 14px; }
+  .desc { color: var(--dim); margin: 0 0 18px; font-size: 15px; }
+
+  .shot {
+    display: block; border-radius: 10px; overflow: hidden; border: 1px solid var(--line);
+    margin-bottom: 20px; aspect-ratio: 16 / 9; background: #000; position: relative;
+  }
+  .shot img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+  .shot::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 55%, rgba(5,7,13,0.85));
+  }
+
+  ul.feat { list-style: none; padding: 0; margin: 0 0 22px; display: grid; gap: 9px; font-size: 14.5px; }
+  ul.feat li { padding-left: 22px; position: relative; }
+  ul.feat li::before { content: "▸"; position: absolute; left: 0; color: var(--purple-hi); font-family: var(--mono); }
+  ul.feat b { color: var(--text); font-weight: 500; }
+  ul.feat li { color: var(--dim); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+  .chip {
+    font-family: var(--mono); font-size: 11.5px; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    color: var(--purple-hi);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  .actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    font-family: var(--mono); font-weight: 600; font-size: 14px; text-decoration: none;
+    padding: 12px 20px; border-radius: 10px; display: inline-flex; align-items: center; gap: 10px;
+  }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.ghost { border: 1px solid var(--line); color: var(--text); }
+  .btn svg { width: 16px; height: 16px; }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 28px 0 40px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--dim);
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px;
+  }
+  footer a { color: var(--gold); text-decoration: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  @media (max-width: 560px) {
+    header { padding-top: 48px; }
+    .body { padding: 22px 20px 24px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<div class="grid" aria-hidden="true"></div>
+<div class="scan" aria-hidden="true"></div>
+
+<div class="wrap">
+  <header>
+    <div class="prompt">capnbry@github:~$ ls ./projects<span class="cursor"></span></div>
+    <h1 data-text="capnbry">capnbry</h1>
+    <p class="tagline">Hardware tools that run in your <b>web browser</b>. Plug in a device, open a page, and get to work. Nothing to install.</p>
+    <div class="status">
+      <span>2 projects online</span>
+      <span>Web Serial · Web Bluetooth</span>
+      <span>Hosted on GitHub Pages</span>
+    </div>
+  </header>
+
+  <main class="projects">
+    <!-- Widscan58 -->
+    <article class="card wid">
+      <div class="card-inner">
+        <canvas class="viz" id="viz-wid" aria-hidden="true"></canvas>
+        <div class="body">
+          <div class="kicker">// RF · ESP32-C5 · 5.8 GHz</div>
+          <h2>Widscan58</h2>
+          <p class="lede">A 5.8&nbsp;GHz FPV channel scanner made from an ESP32-C5.</p>
+          <p class="desc">Widscan58 uses the Wi-Fi radio inside the ESP32-C5 as a software-defined radio. Instead of decoding Wi-Fi, it reads raw I/Q samples straight from the radio and shows what is on each FPV video channel: signal strength, noise floor, SNR, video bandwidth and a live spectrum of the whole band. Use it at the field to find a clear channel or check pilot VTX frequencies.</p>
+
+          <a class="shot" href="https://capnbry.github.io/widscan58/">
+            <img src="https://raw.githubusercontent.com/capnbry/widscan58/main/images/webui.png" alt="The Widscan58 web UI scanning Raceband R1 to R8" loading="lazy">
+          </a>
+
+          <ul class="feat">
+            <li><b>Eight channels at once</b>, each updating about 60 times a second</li>
+            <li><b>Band panorama</b> with max-hold, average traces and a waterfall</li>
+            <li><b>RotorHazard timer node</b> or a standalone lap timer with voice callouts</li>
+            <li><b>Flash from the browser</b>, or press Simulate to try it with no hardware</li>
+          </ul>
+
+          <div class="chips">
+            <span class="chip">SDR</span><span class="chip">FPV</span><span class="chip">Web Serial</span><span class="chip">Lap timing</span><span class="chip">GPL-3.0</span>
+          </div>
+
+          <div class="actions">
+            <a class="btn primary" href="https://capnbry.github.io/widscan58/">Launch web UI
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+            <a class="btn ghost" href="https://github.com/capnbry/widscan58">
+              <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+              Source</a>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- FNB48 Web Control -->
+    <article class="card fnb">
+      <div class="card-inner">
+        <canvas class="viz" id="viz-fnb" aria-hidden="true"></canvas>
+        <div class="body">
+          <div class="kicker">// USB power · Web Bluetooth · PWA</div>
+          <h2>FNB48 Web Control</h2>
+          <p class="lede">A browser replacement for the FNIRSI FNB48 Android app.</p>
+          <p class="desc">The official app doesn't seem to work any more, so this one talks to the USB power meter directly over Web Bluetooth. The protocol was reverse-engineered by disassembling the APK. It installs on your phone as a PWA, and works in Chrome or Edge on desktop and Android.</p>
+
+          <a class="shot" href="https://capnbry.github.io/fnb48-web/">
+            <img src="https://raw.githubusercontent.com/capnbry/fnb48-web/main/screenshots/live.png" alt="The FNB48 web frontend showing live voltage, current and power" loading="lazy">
+          </a>
+
+          <ul class="feat">
+            <li><b>Live V / A / W</b> at 0.1&nbsp;mV / 0.1&nbsp;mA, plus temperature, D+/D− and charge protocol</li>
+            <li><b>Live trace</b> from 10&nbsp;s to 1&nbsp;h with min/max/avg and freeze</li>
+            <li><b>Fast-charge trigger</b> for QC2.0, QC3.0, FCP and AFC</li>
+            <li><b>Energy groups, alarms</b> and recording to CSV</li>
+          </ul>
+
+          <div class="chips">
+            <span class="chip">Web Bluetooth</span><span class="chip">PWA</span><span class="chip">USB-C PD</span><span class="chip">Reverse engineered</span>
+          </div>
+
+          <div class="actions">
+            <a class="btn primary" href="https://capnbry.github.io/fnb48-web/">Launch web app
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+            <a class="btn ghost" href="https://github.com/capnbry/fnb48-web">
+              <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+              Source</a>
+          </div>
+        </div>
+      </div>
+    </article>
+  </main>
+
+  <footer>
+    <span>&copy; capnbry · built for the bench and the field (lol an llm wrote this but I am leaving it)</span>
+    <a href="https://github.com/capnbry">github.com/capnbry →</a>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function fit(c) {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const r = c.getBoundingClientRect();
+    c.width = Math.max(1, r.width * dpr);
+    c.height = Math.max(1, r.height * dpr);
+    return dpr;
+  }
+
+  // Background: slow drifting waterfall of faint spectrum lines
+  const bg = document.getElementById("bg");
+  const bgx = bg.getContext("2d");
+  let bgDpr = fit(bg);
+
+  // Widscan58 card: 8-channel spectrum with two "VTX" humps
+  const wid = document.getElementById("viz-wid");
+  const wx = wid.getContext("2d");
+  // FNB48 card: scrolling voltage / current traces
+  const fnb = document.getElementById("viz-fnb");
+  const fx = fnb.getContext("2d");
+  let wDpr = fit(wid), fDpr = fit(fnb);
+
+  addEventListener("resize", () => { bgDpr = fit(bg); wDpr = fit(wid); fDpr = fit(fnb); });
+
+  const hump = (x, c, w) => Math.exp(-((x - c) ** 2) / (2 * w * w));
+  const noise = () => Math.random() * Math.random();
+
+  const peakHold = [];
+  const vHist = [], aHist = [];
+
+  function drawBg(t) {
+    const w = bg.width, h = bg.height;
+    bgx.clearRect(0, 0, w, h);
+    const rows = 7;
+    for (let r = 0; r < rows; r++) {
+      const y0 = h * (0.25 + r * 0.11);
+      bgx.beginPath();
+      for (let x = 0; x <= w; x += 6 * bgDpr) {
+        const u = x / w;
+        const y = y0
+          - Math.sin(u * 9 + t * 0.0004 + r) * 14 * bgDpr
+          - hump(u, 0.3 + 0.1 * Math.sin(t * 0.0002 + r), 0.03) * 60 * bgDpr
+          - hump(u, 0.72, 0.02) * 40 * bgDpr * (0.6 + 0.4 * Math.sin(t * 0.001 + r));
+        x ? bgx.lineTo(x, y) : bgx.moveTo(x, y);
+      }
+      const a = 0.05 + 0.03 * (rows - r) / rows;
+      bgx.strokeStyle = r % 2 ? `rgba(245,197,66,${a * 0.7})` : `rgba(139,92,246,${a * 1.4})`;
+      bgx.lineWidth = 1.2 * bgDpr;
+      bgx.stroke();
+    }
+  }
+
+  function drawWid(t) {
+    const w = wid.width, h = wid.height, d = wDpr;
+    wx.clearRect(0, 0, w, h);
+    const N = 160;
+    const vtx = [
+      { c: 1 / 16, a: 0.85 + 0.1 * Math.sin(t * 0.003) },
+      { c: 11 / 16, a: 0.95 + 0.05 * Math.sin(t * 0.004 + 1) },
+      { c: 6 / 16 + 0.01 * Math.sin(t * 0.0013), a: 0.35 * (Math.sin(t * 0.007) > 0.2 ? 1 : 0.2) },
+    ];
+    const pts = [];
+    for (let i = 0; i < N; i++) {
+      const u = i / (N - 1);
+      let v = 0.08 + noise() * 0.08;
+      for (const s of vtx) v += s.a * hump(u, s.c, 0.022);
+      v = Math.min(v, 1);
+      pts.push(v);
+      peakHold[i] = Math.max((peakHold[i] || 0) * 0.985, v);
+    }
+    // Channel dividers and labels
+    wx.font = `${10 * d}px "JetBrains Mono", monospace`;
+    wx.textAlign = "center";
+    for (let ch = 0; ch < 8; ch++) {
+      const x = ((ch * 2 + 1) / 16) * w;
+      wx.fillStyle = "rgba(125,138,163,0.55)";
+      wx.fillText("R" + (ch + 1), x, h - 6 * d);
+      wx.fillStyle = "rgba(139,92,246,0.12)";
+      wx.fillRect((ch * 2 / 16) * w, 0, 1 * d, h);
+    }
+    const top = 10 * d, base = h - 20 * d, span = base - top;
+    // Filled spectrum
+    const g = wx.createLinearGradient(0, top, 0, base);
+    g.addColorStop(0, "rgba(139,92,246,0.6)");
+    g.addColorStop(1, "rgba(139,92,246,0.03)");
+    wx.beginPath();
+    wx.moveTo(0, base);
+    pts.forEach((v, i) => wx.lineTo((i / (N - 1)) * w, base - v * span));
+    wx.lineTo(w, base);
+    wx.closePath();
+    wx.fillStyle = g;
+    wx.fill();
+    wx.beginPath();
+    pts.forEach((v, i) => { const x = (i / (N - 1)) * w, y = base - v * span; i ? wx.lineTo(x, y) : wx.moveTo(x, y); });
+    wx.strokeStyle = "#a78bfa";
+    wx.lineWidth = 1.5 * d;
+    wx.shadowColor = "#7c3aed";
+    wx.shadowBlur = 8 * d;
+    wx.stroke();
+    wx.shadowBlur = 0;
+    // Max hold
+    wx.beginPath();
+    peakHold.forEach((v, i) => { const x = (i / (N - 1)) * w, y = base - v * span; i ? wx.lineTo(x, y) : wx.moveTo(x, y); });
+    wx.strokeStyle = "rgba(245,197,66,0.6)";
+    wx.lineWidth = 1 * d;
+    wx.stroke();
+    // Readout
+    wx.textAlign = "left";
+    wx.fillStyle = "#f5c542";
+    wx.font = `600 ${11 * d}px "JetBrains Mono", monospace`;
+    wx.fillText(`R6 5843 MHz  SNR ${(40 + Math.sin(t * 0.004) * 1.5).toFixed(1)} dB`, 38 * d, 22 * d);
+  }
+
+  function drawFnb(t) {
+    const w = fnb.width, h = fnb.height, d = fDpr;
+    fx.clearRect(0, 0, w, h);
+    const N = 140;
+    // Simulated charge session with a QC step to 9V
+    const phase = (t * 0.00012) % 1;
+    const vTarget = phase > 0.45 ? 9.02 : 5.08;
+    const v = vTarget + (Math.random() - 0.5) * 0.04;
+    const a = (phase > 0.45 ? 1.94 : 2.41) + Math.sin(t * 0.002) * 0.12 + (Math.random() - 0.5) * 0.05;
+    vHist.push(v); aHist.push(a);
+    if (vHist.length > N) { vHist.shift(); aHist.shift(); }
+
+    // Grid
+    fx.strokeStyle = "rgba(139,92,246,0.12)";
+    fx.lineWidth = 1 * d;
+    for (let i = 1; i < 5; i++) { fx.beginPath(); fx.moveTo(0, (h * i) / 5); fx.lineTo(w, (h * i) / 5); fx.stroke(); }
+
+    const plot = (arr, lo, hi, color) => {
+      fx.beginPath();
+      arr.forEach((val, i) => {
+        const x = ((i + N - arr.length) / (N - 1)) * w;
+        const y = h - 14 * d - ((val - lo) / (hi - lo)) * (h - 40 * d);
+        i ? fx.lineTo(x, y) : fx.moveTo(x, y);
+      });
+      fx.strokeStyle = color;
+      fx.lineWidth = 1.8 * d;
+      fx.shadowColor = color;
+      fx.shadowBlur = 8 * d;
+      fx.stroke();
+      fx.shadowBlur = 0;
+    };
+    plot(vHist, 4, 10, "#a78bfa");
+    plot(aHist, 0, 3.2, "#f5c542");
+
+    fx.font = `600 ${11 * d}px "JetBrains Mono", monospace`;
+    fx.textAlign = "left";
+    fx.fillStyle = "#a78bfa";
+    fx.fillText(`${v.toFixed(4)} V`, 38 * d, 22 * d);
+    fx.fillStyle = "#f5c542";
+    fx.fillText(`${a.toFixed(4)} A`, 138 * d, 22 * d);
+    fx.fillStyle = "#e9d5ff";
+    fx.fillText(`${(v * a).toFixed(3)} W`, 238 * d, 22 * d);
+    fx.textAlign = "right";
+    fx.fillStyle = "rgba(216,228,245,0.6)";
+    if (w / d > 420) fx.fillText(phase > 0.45 ? "QC2.0 9V" : "USB 5V", w - 12 * d, 22 * d);
+  }
+
+  // Pre-fill the FNB48 trace so it isn't empty on load
+  for (let i = 0; i < 140; i++) drawFnb(performance.now() - (140 - i) * 50);
+
+  let last = 0;
+  function frame(t) {
+    drawBg(t);
+    if (t - last > 45) { drawWid(t); drawFnb(t); last = t; }
+    if (!reduced) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
